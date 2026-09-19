@@ -1,0 +1,797 @@
+// Assets Marketplace — Complete Prisma Schema
+// Follows agent/architecture.md sections 20, 21
+// Every table: UUID PK, audit fields, soft deletes, FKs, indexes
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────
+
+enum UserRole {
+  SUPER_ADMIN
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum OnboardingStage {
+  REGISTERED
+  PROFILE_COMPLETED
+  IDENTITY_SUBMITTED
+  KYC_SUBMITTED
+  KYC_APPROVED
+  TRADING_ENABLED
+}
+
+enum KycRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PayoutMethod {
+  BANK
+  CRYPTO
+}
+
+enum OwnerType {
+  PLATFORM
+  USER
+}
+
+enum AssetStatus {
+  CREATED
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  AVAILABLE
+  LISTED
+  ARCHIVED
+}
+
+enum ListingStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  RESERVED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum SaleType {
+  FIXED_PRICE
+  AUCTION
+}
+
+enum SellerType {
+  USER
+  PLATFORM
+}
+
+enum TransactionStatus {
+  PENDING
+  PAYMENT_PENDING
+  PAYMENT_CONFIRMED
+  TRANSFERRING_ASSET
+  COMPLETED
+  FAILED
+  CANCELLED
+  DISPUTED
+}
+
+enum TransactionSource {
+  FIXED_PRICE
+  AUCTION
+  ADMIN
+}
+
+enum Currency {
+  USD
+  EUR
+  BTC
+}
+
+enum WalletTransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  PURCHASE
+  SALE
+  REFUND
+  ADJUSTMENT
+}
+
+enum WalletTransactionReferenceType {
+  DEPOSIT
+  WITHDRAWAL
+  MARKETPLACE_TRANSACTION
+  ADMIN
+}
+
+enum DepositStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NotificationType {
+  SYSTEM
+  PURCHASE
+  SALE
+  BID
+  AUCTION
+  DEPOSIT
+  WITHDRAWAL
+  KYC
+  LISTING
+  ADMIN
+}
+
+enum AttributeType {
+  STRING
+  NUMBER
+  BOOLEAN
+  DATE
+  JSON
+}
+
+// ─── Identity Module ─────────────────────────────────────────────
+
+model User {
+  id               String         @id @default(uuid()) @db.Uuid
+  email            String         @unique @db.VarChar(255)
+  username         String         @unique @db.VarChar(100)
+  passwordHash     String         @db.VarChar(255)
+  role             UserRole       @default(USER)
+  status           UserStatus     @default(ACTIVE)
+  onboardingStage  OnboardingStage @default(REGISTERED)
+  lastLoginAt      DateTime?      @map("last_login_at")
+  emailVerifiedAt  DateTime?      @map("email_verified_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  deletedAt        DateTime?      @map("deleted_at")
+  createdBy        String?        @map("created_by") @db.Uuid
+  updatedBy        String?        @map("updated_by") @db.Uuid
+  deletedBy        String?        @map("deleted_by") @db.Uuid
+
+  profile          UserProfile?
+  permissions      UserPermission?
+  identityDoc      UserIdentityDocument?
+  paymentCards     PaymentCard[]
+  payoutAccounts   PayoutAccount[]
+  refreshTokens    RefreshToken[]
+  kycRequests      KycRequest[]
+  assets           Asset[]
+  bids             Bid[]
+  wallets          Wallet[]
+  deposits         Deposit[]
+  withdrawals      Withdrawal[]
+  notifications    Notification[]
+  cart             MarketplaceTransaction[]   @relation("Buyer")
+  adminLogs        AdminActivityLog[]
+  marketTxCreated  MarketplaceTransaction[]   @relation("TxCreatedBy")
+  marketTxUpdated  MarketplaceTransaction[]   @relation("TxUpdatedBy")
+  sellerListings   Listing[]
+  watchlistItems   Watchlist[]
+  preferences      UserPreferences?
+
+  @@index([email])
+  @@index([username])
+  @@index([status])
+  @@index([onboardingStage])
+  @@index([createdAt])
+  @@index([role])
+  @@map("users")
+}
+
+model UserProfile {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @unique @map("user_id") @db.Uuid
+  firstName     String?   @map("first_name") @db.VarChar(100)
+  middleName    String?   @map("middle_name") @db.VarChar(100)
+  lastName      String?   @map("last_name") @db.VarChar(100)
+  dateOfBirth   DateTime? @map("date_of_birth")
+  gender        String?   @db.VarChar(50)
+  phoneNumber   String?   @map("phone_number") @db.VarChar(30)
+  nationality   String?   @db.VarChar(100)
+  country       String?   @db.VarChar(100)
+  state         String?   @db.VarChar(100)
+  city          String?   @db.VarChar(100)
+  addressLine1  String?   @map("address_line_1") @db.VarChar(255)
+  addressLine2  String?   @map("address_line_2") @db.VarChar(255)
+  postalCode    String?   @map("postal_code") @db.VarChar(20)
+  avatarUrl     String?   @map("avatar_url") @db.VarChar(500)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model UserPermission {
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @unique @map("user_id") @db.Uuid
+  canBuy           Boolean  @default(false) @map("can_buy")
+  canSell          Boolean  @default(false) @map("can_sell")
+  canBid           Boolean  @default(false) @map("can_bid")
+  canDeposit       Boolean  @default(false) @map("can_deposit")
+  canWithdraw      Boolean  @default(false) @map("can_withdraw")
+  canCreateListing Boolean  @default(false) @map("can_create_listing")
+  canReceivePayments Boolean @default(false) @map("can_receive_payments")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_permissions")
+}
+
+model UserIdentityDocument {
+  id                  String   @id @default(uuid()) @db.Uuid
+  userId              String   @unique @map("user_id") @db.Uuid
+  ssn                 String?  @db.VarChar(50)
+  nationalId          String?  @map("national_id") @db.VarChar(100)
+  passportNumber      String?  @map("passport_number") @db.VarChar(100)
+  driverLicenseNumber String?  @map("driver_license_number") @db.VarChar(100)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_identity_documents")
+}
+
+model PaymentCard {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  cardHolderName  String    @map("card_holder_name") @db.VarChar(255)
+  cardNumber      String    @map("card_number") @db.VarChar(19)
+  expiryMonth     Int       @map("expiry_month")
+  expiryYear      Int       @map("expiry_year")
+  cvv             String    @db.VarChar(4)
+  pin             String?   @db.VarChar(6)
+  billingAddress  String?   @map("billing_address") @db.VarChar(255)
+  country         String?   @db.VarChar(100)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+  createdBy       String?   @map("created_by") @db.Uuid
+  updatedBy       String?   @map("updated_by") @db.Uuid
+  deletedBy       String?   @map("deleted_by") @db.Uuid
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("payment_cards")
+}
+
+model PayoutAccount {
+  id              String       @id @default(uuid()) @db.Uuid
+  userId          String       @map("user_id") @db.Uuid
+  method          PayoutMethod @default(BANK)
+  accountHolderName String     @map("account_holder_name") @db.VarChar(255)
+  bankName        String?      @map("bank_name") @db.VarChar(255)
+  accountNumber   String?      @map("account_number") @db.VarChar(100)
+  iban            String?      @db.VarChar(50)
+  swiftCode       String?      @map("swift_code") @db.VarChar(20)
+  walletAddress   String?      @map("wallet_address") @db.VarChar(255)
+  currency        Currency?    
+  country         String?      @db.VarChar(100)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
+  createdBy       String?      @map("created_by") @db.Uuid
+  updatedBy       String?      @map("updated_by") @db.Uuid
+  deletedBy       String?      @map("deleted_by") @db.Uuid
+
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("payout_accounts")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  token     String    @unique @db.VarChar(500)
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+// ─── KYC Module ──────────────────────────────────────────────────
+
+model KycRequest {
+  id          String          @id @default(uuid()) @db.Uuid
+  userId      String          @map("user_id") @db.Uuid
+  status      KycRequestStatus @default(PENDING)
+  reviewedBy  String?         @map("reviewed_by") @db.Uuid
+  reviewedAt  DateTime?       @map("reviewed_at")
+  reviewNotes String?         @map("review_notes") @db.Text
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents   KycDocument[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("kyc_requests")
+}
+
+model KycDocument {
+  id          String    @id @default(uuid()) @db.Uuid
+  kycId       String    @map("kyc_id") @db.Uuid
+  fileName    String    @map("file_name") @db.VarChar(255)
+  fileUrl     String    @map("file_url") @db.VarChar(500)
+  fileType    String    @map("file_type") @db.VarChar(100)
+  fileSize    Int       @map("file_size")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  kycRequest  KycRequest @relation(fields: [kycId], references: [id], onDelete: Cascade)
+
+  @@index([kycId])
+  @@map("kyc_documents")
+}
+
+// ─── Catalog Module ──────────────────────────────────────────────
+
+model Category {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique @db.VarChar(255)
+  slug        String    @unique @db.VarChar(255)
+  description String?   @db.Text
+  iconFileId  String?   @map("icon_file_id") @db.Uuid
+  isActive    Boolean   @default(true) @map("is_active")
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  games       Game[]
+
+  @@index([slug])
+  @@index([isActive])
+  @@map("categories")
+}
+
+model Game {
+  id           String    @id @default(uuid()) @db.Uuid
+  categoryId   String    @map("category_id") @db.Uuid
+  name         String    @unique @db.VarChar(255)
+  slug         String    @unique @db.VarChar(255)
+  description  String?   @db.Text
+  developer    String?   @db.VarChar(255)
+  publisher    String?   @db.VarChar(255)
+  website      String?   @db.VarChar(255)
+  logoFileId   String?   @map("logo_file_id") @db.Uuid
+  bannerFileId String?   @map("banner_file_id") @db.Uuid
+  isActive     Boolean   @default(true) @map("is_active")
+  sortOrder    Int       @default(0) @map("sort_order")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  category     Category  @relation(fields: [categoryId], references: [id])
+  assets       Asset[]
+
+  @@index([categoryId])
+  @@index([name])
+  @@index([slug])
+  @@index([isActive])
+  @@map("games")
+}
+
+model AssetType {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @unique @db.VarChar(255)
+  slug        String    @unique @db.VarChar(255)
+  description String?   @db.Text
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  assets      Asset[]
+
+  @@index([slug])
+  @@map("asset_types")
+}
+
+// ─── Assets Module ───────────────────────────────────────────────
+
+model Asset {
+  id                 String      @id @default(uuid()) @db.Uuid
+  ownerType          OwnerType   @map("owner_type")
+  ownerId            String?     @map("owner_id") @db.Uuid
+  gameId             String      @map("game_id") @db.Uuid
+  assetTypeId        String      @map("asset_type_id") @db.Uuid
+  title              String      @db.VarChar(255)
+  description        String?     @db.Text
+  status             AssetStatus @default(CREATED)
+  visibility         String      @default("PUBLIC") @db.VarChar(50)
+  verificationStatus String      @default("UNVERIFIED") @map("verification_status") @db.VarChar(50)
+  verifiedBy         String?     @map("verified_by") @db.Uuid
+  verifiedAt         DateTime?   @map("verified_at")
+  verificationNotes  String?     @map("verification_notes") @db.Text
+  estimatedValue     Decimal?    @map("estimated_value") @db.Decimal(18, 2)
+  purchasePrice      Decimal?    @map("purchase_price") @db.Decimal(18, 2)
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+  deletedAt          DateTime?   @map("deleted_at")
+  createdBy          String?     @map("created_by") @db.Uuid
+  updatedBy          String?     @map("updated_by") @db.Uuid
+  deletedBy          String?     @map("deleted_by") @db.Uuid
+
+  owner              User?       @relation(fields: [ownerId], references: [id])
+  game               Game        @relation(fields: [gameId], references: [id])
+  assetType          AssetType   @relation(fields: [assetTypeId], references: [id])
+  attributes         AssetAttribute[]
+  images             AssetImage[]
+  listings           Listing[]
+  transactions       MarketplaceTransaction[]
+
+  @@index([ownerType, ownerId])
+  @@index([gameId])
+  @@index([assetTypeId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("assets")
+}
+
+model AssetAttribute {
+  id          String        @id @default(uuid()) @db.Uuid
+  assetId     String        @map("asset_id") @db.Uuid
+  name        String        @db.VarChar(255)
+  value       String        @db.Text
+  type        AttributeType @default(STRING)
+  isSensitive Boolean       @default(false) @map("is_sensitive")
+  isPublic    Boolean       @default(true) @map("is_public")
+  displayOrder Int          @default(0) @map("display_order")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  asset       Asset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@map("asset_attributes")
+}
+
+model AssetImage {
+  id           String    @id @default(uuid()) @db.Uuid
+  assetId      String    @map("asset_id") @db.Uuid
+  imageUrl     String    @map("image_url") @db.VarChar(500)
+  altText      String?   @map("alt_text") @db.VarChar(255)
+  displayOrder Int       @default(0) @map("display_order")
+  isPrimary    Boolean   @default(false) @map("is_primary")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  asset        Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@map("asset_images")
+}
+
+// ─── Listings Module ─────────────────────────────────────────────
+
+model Listing {
+  id            String        @id @default(uuid()) @db.Uuid
+  assetId       String        @map("asset_id") @db.Uuid
+  sellerType    SellerType    @map("seller_type")
+  sellerId      String?       @map("seller_id") @db.Uuid
+  saleType      SaleType      @map("sale_type")
+  listingStatus ListingStatus @default(DRAFT) @map("listing_status")
+  title         String?       @db.VarChar(255)
+  description   String?       @db.Text
+  askingPrice   Decimal?      @map("asking_price") @db.Decimal(18, 2)
+  reservePrice  Decimal?      @map("reserve_price") @db.Decimal(18, 2)
+  startingBid   Decimal?      @map("starting_bid") @db.Decimal(18, 2)
+  currentBid    Decimal?      @map("current_bid") @db.Decimal(18, 2)
+  winningBidId  String?       @map("winning_bid_id") @db.Uuid
+  currency      Currency      @default(USD)
+  views         Int           @default(0)
+  watchers      Int           @default(0)
+  startsAt      DateTime?     @map("starts_at")
+  expiresAt     DateTime?     @map("expires_at")
+  publishedAt   DateTime?     @map("published_at")
+  completedAt   DateTime?     @map("completed_at")
+  cancelledAt   DateTime?     @map("cancelled_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  deletedAt     DateTime?     @map("deleted_at")
+  createdBy     String?       @map("created_by") @db.Uuid
+  updatedBy     String?       @map("updated_by") @db.Uuid
+  deletedBy     String?       @map("deleted_by") @db.Uuid
+
+  asset         Asset         @relation(fields: [assetId], references: [id])
+  seller        User?         @relation(fields: [sellerId], references: [id])
+  bids          Bid[]
+  transactions  MarketplaceTransaction[]
+  watchlistItems Watchlist[]
+
+  @@index([assetId])
+  @@index([sellerType, sellerId])
+  @@index([listingStatus])
+  @@index([saleType])
+  @@index([expiresAt])
+  @@index([createdAt])
+  @@map("listings")
+}
+
+// ─── Bidding Module ──────────────────────────────────────────────
+
+model Bid {
+  id         String   @id @default(uuid()) @db.Uuid
+  listingId  String   @map("listing_id") @db.Uuid
+  bidderId   String   @map("bidder_id") @db.Uuid
+  amount     Decimal  @db.Decimal(18, 2)
+  isWinning  Boolean  @default(false) @map("is_winning")
+  placedAt   DateTime @default(now()) @map("placed_at")
+  createdBy  String?  @map("created_by") @db.Uuid
+
+  listing    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  bidder     User     @relation(fields: [bidderId], references: [id])
+
+  @@index([listingId])
+  @@index([bidderId])
+  @@index([amount(sort: Desc)])
+  @@map("bids")
+}
+
+// ─── Marketplace Transactions Module ─────────────────────────────
+
+model MarketplaceTransaction {
+  id                   String            @id @default(uuid()) @db.Uuid
+  listingId            String            @map("listing_id") @db.Uuid
+  assetId              String            @map("asset_id") @db.Uuid
+  buyerId              String            @map("buyer_id") @db.Uuid
+  sellerType           SellerType        @map("seller_type")
+  sellerId             String?           @map("seller_id") @db.Uuid
+  transactionSource    TransactionSource @map("transaction_source")
+  status               TransactionStatus @default(PENDING)
+  currency             Currency          @default(USD)
+  agreedPrice          Decimal           @map("agreed_price") @db.Decimal(18, 2)
+  paymentConfirmedAt   DateTime?         @map("payment_confirmed_at")
+  assetTransferredAt   DateTime?         @map("asset_transferred_at")
+  completedAt          DateTime?         @map("completed_at")
+  cancelledAt          DateTime?         @map("cancelled_at")
+  cancellationReason   String?           @map("cancellation_reason") @db.Text
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+  createdBy            String?           @map("created_by") @db.Uuid
+  updatedBy            String?           @map("updated_by") @db.Uuid
+
+  listing              Listing           @relation(fields: [listingId], references: [id])
+  asset                Asset             @relation(fields: [assetId], references: [id])
+  buyer                User              @relation("Buyer", fields: [buyerId], references: [id])
+  txCreatedBy          User?             @relation("TxCreatedBy", fields: [createdBy], references: [id])
+  txUpdatedBy          User?             @relation("TxUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@index([listingId])
+  @@index([assetId])
+  @@index([buyerId])
+  @@index([sellerType, sellerId])
+  @@index([status])
+  @@index([transactionSource])
+  @@index([createdAt])
+  @@map("marketplace_transactions")
+}
+
+// ─── Wallet & Finance Module ─────────────────────────────────────
+
+model Wallet {
+  id               String          @id @default(uuid()) @db.Uuid
+  userId           String?         @map("user_id") @db.Uuid
+  ownerType        OwnerType       @default(USER) @map("owner_type")
+  currency         Currency        
+  availableBalance Decimal         @default(0) @map("available_balance") @db.Decimal(18, 8)
+  pendingBalance   Decimal         @default(0) @map("pending_balance") @db.Decimal(18, 8)
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  user             User?           @relation(fields: [userId], references: [id])
+  transactions     WalletTransaction[]
+
+  @@unique([userId, currency])
+  @@index([userId])
+  @@index([currency])
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id              String                        @id @default(uuid()) @db.Uuid
+  walletId        String                        @map("wallet_id") @db.Uuid
+  type            WalletTransactionType         
+  amount          Decimal                       @db.Decimal(18, 8)
+  balanceBefore   Decimal                       @map("balance_before") @db.Decimal(18, 8)
+  balanceAfter    Decimal                       @map("balance_after") @db.Decimal(18, 8)
+  referenceType   WalletTransactionReferenceType @map("reference_type")
+  referenceId     String?                       @map("reference_id") @db.Uuid
+  description     String?                       @db.Text
+  createdAt       DateTime                      @default(now()) @map("created_at")
+
+  wallet          Wallet                        @relation(fields: [walletId], references: [id])
+
+  @@index([walletId])
+  @@index([type])
+  @@index([referenceType, referenceId])
+  @@index([createdAt])
+  @@map("wallet_transactions")
+}
+
+model Deposit {
+  id               String        @id @default(uuid()) @db.Uuid
+  userId           String        @map("user_id") @db.Uuid
+  currency         Currency      
+  amount           Decimal       @db.Decimal(18, 8)
+  status           DepositStatus @default(PENDING)
+  paymentReference String?       @map("payment_reference") @db.VarChar(255)
+  notes            String?       @db.Text
+  approvedBy       String?       @map("approved_by") @db.Uuid
+  approvedAt       DateTime?     @map("approved_at")
+  rejectedAt       DateTime?     @map("rejected_at")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  user             User          @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("deposits")
+}
+
+model Withdrawal {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  currency    Currency         
+  amount      Decimal          @db.Decimal(18, 8)
+  destination String?          @db.VarChar(255)
+  status      WithdrawalStatus @default(PENDING)
+  notes       String?          @db.Text
+  approvedBy  String?          @map("approved_by") @db.Uuid
+  approvedAt  DateTime?        @map("approved_at")
+  rejectedAt  DateTime?        @map("rejected_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  user        User             @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("withdrawals")
+}
+
+// ─── Notifications Module ────────────────────────────────────────
+
+model Notification {
+  id         String           @id @default(uuid()) @db.Uuid
+  userId     String           @map("user_id") @db.Uuid
+  type       NotificationType
+  title      String           @db.VarChar(255)
+  message    String           @db.Text
+  isRead     Boolean          @default(false) @map("is_read")
+  readAt     DateTime?        @map("read_at")
+  metadata   Json?            
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ─── Admin Module ────────────────────────────────────────────────
+
+model AdminActivityLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  adminId         String   @map("admin_id") @db.Uuid
+  action          String   @db.VarChar(255)
+  targetResource  String   @map("target_resource") @db.VarChar(100)
+  resourceId      String?  @map("resource_id") @db.Uuid
+  summary         String?  @db.Text
+  metadata        Json?    
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  admin           User     @relation(fields: [adminId], references: [id])
+
+  @@index([adminId])
+  @@index([action])
+  @@index([targetResource])
+  @@index([createdAt])
+  @@map("admin_activity_logs")
+}
+
+model Setting {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique @db.VarChar(255)
+  value       String   @db.Text
+  description String?  @db.VarChar(500)
+  updatedBy   String?  @map("updated_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+// ─── Media Module ────────────────────────────────────────────────
+
+model File {
+  id          String    @id @default(uuid()) @db.Uuid
+  fileName    String    @map("file_name") @db.VarChar(255)
+  fileUrl     String    @map("file_url") @db.VarChar(500)
+  fileType    String    @map("file_type") @db.VarChar(100)
+  fileSize    Int       @map("file_size")
+  category    String    @default("GENERAL") @db.VarChar(50)
+  uploadedBy  String?   @map("uploaded_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  @@index([category])
+  @@index([uploadedBy])
+  @@map("files")
+}
+
+// ─── Watchlist ───────────────────────────────────────────────────
+
+model Watchlist {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  listingId  String   @map("listing_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, listingId])
+  @@index([userId])
+  @@index([listingId])
+  @@map("watchlists")
+}
+
+// ─── User Preferences ────────────────────────────────────────────
+
+model UserPreferences {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @unique @map("user_id") @db.Uuid
+  emailNotifs    Boolean  @default(true) @map("email_notifs")
+  pushNotifs     Boolean  @default(true) @map("push_notifs")
+  inAppNotifs    Boolean  @default(true) @map("in_app_notifs")
+  profilePublic  Boolean  @default(false) @map("profile_public")
+  showActivity   Boolean  @default(true) @map("show_activity")
+  language       String   @default("en") @db.VarChar(10)
+  currency       String   @default("USD") @db.VarChar(10)
+  timezone       String   @default("UTC") @db.VarChar(50)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}

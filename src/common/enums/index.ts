@@ -1,0 +1,22 @@
+// Re-export all Prisma enums for use in DTOs and services
+export {
+  UserRole,
+  UserStatus,
+  OnboardingStage,
+  KycRequestStatus,
+  PayoutMethod,
+  OwnerType,
+  AssetStatus,
+  ListingStatus,
+  SaleType,
+  SellerType,
+  TransactionStatus,
+  TransactionSource,
+  Currency,
+  WalletTransactionType,
+  WalletTransactionReferenceType,
+  DepositStatus,
+  WithdrawalStatus,
+  NotificationType,
+  AttributeType,
+} from '@prisma/client';
