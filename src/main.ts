@@ -20,13 +20,7 @@ async function bootstrap() {
   // Security
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://localhost:5175',
-      '*',
-    ],
+    origin: '*',
   });
 
   // Prevent browser 304 caching on API responses
